@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment secrets — لا تُرفع أبدًا؛ backend/.env.example هو القالب المرجعي
+.env
+.env.local
+.env.*.local
+
+# Uploaded / generated files (PDF الطبية المولَّدة محليًا)
+backend/uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+
+# Prisma
+backend/prisma/*.db

@@ -1,0 +1,279 @@
+// Prisma schema — منصة حجز مواعيد الأطباء
+// Roles: USER, DOCTOR, ADMIN
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  DOCTOR
+  ADMIN
+}
+
+enum DoctorStatus {
+  PENDING   // بانتظار موافقة الأدمن
+  APPROVED
+  REJECTED
+  SUSPENDED // أوقفه الأدمن بعد الموافقة
+}
+
+enum SlotStatus {
+  OPEN        // متاح للحجز
+  HELD        // محجوز مؤقتًا أثناء عملية الدفع
+  BOOKED      // مؤكد
+  CANCELLED   // ألغاه الطبيب
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT // أُنشئ الحجز وننتظر تأكيد الدفع من الـ webhook
+  CONFIRMED       // الدفع تأكد + تولّدت غرفة الفيديو
+  IN_SESSION      // الطرفان دخلا غرفة الفيديو والجلسة قائمة فعليًا
+  COMPLETED       // انتهت الجلسة (يدويًا أو تلقائيًا بعد مدة الحجز)
+  CANCELLED       // ألغي (يدويًا أو بسبب انتهاء مهلة الدفع)
+  EXPIRED         // انتهت مهلة الحجز المؤقت قبل إتمام الدفع
+}
+
+enum PaymentStatus {
+  CREATED   // أُنشئت عملية الدفع لدى البوابة، بانتظار المستخدم
+  PAID      // أكّدها الـ webhook
+  FAILED
+  REFUNDED  // استُرد المبلغ بعد إلغاء الحجز ضمن سياسة الاسترداد
+}
+
+enum PaymentProvider {
+  PAYTABS
+  HYPERPAY
+  MOYASAR
+  TAP
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  APPOINTMENT_REMINDER
+  SESSION_STARTED
+  MEDICAL_RECORD_READY
+  BOOKING_CANCELLED
+  NEW_BOOKING_FOR_DOCTOR
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  role         Role     @default(USER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  doctorProfile DoctorProfile?
+  bookings      Booking[]       @relation("UserBookings")
+  refreshTokens RefreshToken[]
+  reviewsGiven  Review[]        @relation("ReviewsByUser")
+  deviceTokens  DeviceToken[]
+
+  @@map("users")
+}
+
+// رموز الأجهزة المسجَّلة لإرسال إشعارات FCM Push
+model DeviceToken {
+  id        String         @id @default(uuid())
+  userId    String
+  token     String         @unique
+  platform  DevicePlatform
+  createdAt DateTime       @default(now())
+  lastUsedAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("device_tokens")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ملف الطبيب — يُنشأ عند تسجيل مستخدم كطبيب، ويبقى PENDING حتى موافقة الأدمن
+model DoctorProfile {
+  id            String       @id @default(uuid())
+  userId        String       @unique
+  specialty     String
+  bio           String?
+  consultFeeCents Int        // السعر بالهللات/السنتات لتفادي أخطاء الفاصلة العشرية
+  currency      String       @default("SAR")
+  status        DoctorStatus @default(PENDING)
+  rejectionReason String?
+  approvedAt    DateTime?
+  approvedById  String?
+  ratingAvg     Float        @default(0)   // متوسط التقييم، محدَّث تلقائيًا عند كل مراجعة جديدة
+  ratingCount   Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slots         AvailabilitySlot[]
+  bookings      Booking[]     @relation("DoctorBookings")
+  reviews       Review[]
+
+  @@map("doctor_profiles")
+}
+
+// فتحات التوفر التي يحددها الطبيب لجدوله
+model AvailabilitySlot {
+  id         String     @id @default(uuid())
+  doctorId   String
+  startsAt   DateTime
+  endsAt     DateTime
+  status     SlotStatus @default(OPEN)
+  heldUntil  DateTime?  // مهلة الحجز المؤقت (pending payment) — ينتهي تلقائيًا إن لم يُدفع
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  doctor  DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  booking Booking?
+
+  @@index([doctorId, startsAt])
+  @@map("availability_slots")
+}
+
+model Booking {
+  id            String        @id @default(uuid())
+  userId        String
+  doctorId      String
+  slotId        String        @unique
+  status        BookingStatus @default(PENDING_PAYMENT)
+  amountCents   Int
+  currency      String        @default("SAR")
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  confirmedAt   DateTime?
+  cancelledAt   DateTime?
+  sessionStartedAt DateTime?  // لحظة دخول أول طرف فعليًا لغرفة الفيديو
+  sessionEndedAt   DateTime?  // لحظة انتهاء الجلسة، يُبنى عليها توليد الملف الطبي تلقائيًا
+  reminderSentAt   DateTime?  // يمنع إرسال تذكير الموعد أكثر من مرة
+
+  user     User          @relation("UserBookings", fields: [userId], references: [id])
+  doctor   DoctorProfile @relation("DoctorBookings", fields: [doctorId], references: [id])
+  slot     AvailabilitySlot @relation(fields: [slotId], references: [id])
+  payment  Payment?
+  videoRoom     VideoRoom?
+  medicalRecord MedicalRecord?
+  review        Review?
+
+  @@index([userId])
+  @@index([doctorId])
+  @@map("bookings")
+}
+
+// عملية الدفع المرتبطة بحجز — الأدمن/الفرونت لا يمكنهما تأكيدها، فقط webhook موقّع من البوابة
+model Payment {
+  id              String          @id @default(uuid())
+  bookingId       String          @unique
+  provider        PaymentProvider
+  providerRefId   String          @unique // معرّف العملية لدى البوابة (transaction id)
+  status          PaymentStatus   @default(CREATED)
+  amountCents     Int
+  currency        String          @default("SAR")
+  checkoutUrl     String?
+  rawWebhookPayload Json?         // آخر payload تم التحقق من توقيعه (للتدقيق)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  paidAt          DateTime?
+  refundedAt      DateTime?
+  refundRefId     String?         // معرّف عملية الاسترداد لدى البوابة
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+// سجل خام لكل Webhook وارد (حتى غير الصالح) — للتدقيق الأمني ومنع إعادة التشغيل
+model WebhookEvent {
+  id            String   @id @default(uuid())
+  provider      PaymentProvider
+  providerRefId String?
+  signatureValid Boolean
+  payload       Json
+  processedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([provider, providerRefId])
+  @@map("webhook_events")
+}
+
+// غرفة فيديو Daily.co — تُنشأ فقط بعد تأكيد الدفع فعليًا (نفس ضمان meetings سابقًا)
+model VideoRoom {
+  id          String   @id @default(uuid())
+  bookingId   String   @unique
+  provider    String   @default("DAILY") // مستقبلًا: AGORA | TWILIO لو تغيّر المزود
+  roomName    String   @unique
+  roomUrl     String
+  expiresAt   DateTime // ينتهي صلاحية الغرفة تلقائيًا لدى المزود بعد مدة الجلسة
+  createdAt   DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("video_rooms")
+}
+
+// الملف الطبي (تقرير الجلسة) الذي يكتبه الطبيب بعد انتهاء الاستشارة
+model MedicalRecord {
+  id              String   @id @default(uuid())
+  bookingId       String   @unique
+  diagnosis       String
+  medications     Json     // مصفوفة {name, dosage, duration}
+  followUpNotes   String?
+  followUpDate    DateTime?
+  pdfPath         String?  // المسار المحلي على السيرفر لملف الـ PDF المولَّد
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("medical_records")
+}
+
+// تقييم المريض للطبيب بعد اكتمال الجلسة فقط
+model Review {
+  id        String   @id @default(uuid())
+  bookingId String   @unique
+  userId    String
+  doctorId  String
+  rating    Int      // 1-5، يُتحقق منه في طبقة الخدمة
+  comment   String?
+  createdAt DateTime @default(now())
+
+  booking Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user    User          @relation("ReviewsByUser", fields: [userId], references: [id])
+  doctor  DoctorProfile @relation(fields: [doctorId], references: [id])
+
+  @@index([doctorId])
+  @@map("reviews")
+}

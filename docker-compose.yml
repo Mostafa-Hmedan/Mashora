@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mashora-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mashora
+    ports:
+      - '5434:5432'
+    volumes:
+      - mashora_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d mashora']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mashora_pgdata:
