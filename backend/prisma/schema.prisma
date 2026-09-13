@@ -51,6 +51,7 @@ enum PaymentProvider {
   HYPERPAY
   MOYASAR
   TAP
+  MOCK // للتطوير المحلي فقط — يُرفض صراحة في NODE_ENV=production (انظر payments.module.ts)
 }
 
 enum NotificationType {
