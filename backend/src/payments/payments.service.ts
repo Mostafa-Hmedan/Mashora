@@ -57,11 +57,15 @@ export class PaymentsService {
    * نقطة الحقيقة الوحيدة لتأكيد الدفع. لا تُستدعى أبدًا من طلب يرسله المستخدم مباشرة —
    * فقط من AuthController الخاص بالـ webhook بعد التحقق من التوقيع في الطبقة الأدنى.
    */
-  async handleVerifiedWebhook(rawBody: Buffer, headers: Record<string, string>) {
+  async handleVerifiedWebhook(
+    rawBody: Buffer,
+    headers: Record<string, string>,
+    query: Record<string, string>,
+  ) {
     let verified;
     let signatureValid = true;
     try {
-      verified = this.provider.verifyWebhook(rawBody, headers);
+      verified = this.provider.verifyWebhook(rawBody, headers, query);
     } catch (err) {
       signatureValid = false;
       // نسجل كل محاولة حتى الفاشلة للتدقيق الأمني، دون كشف تفاصيل الخطأ للمرسل

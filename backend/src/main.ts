@@ -12,7 +12,8 @@ async function bootstrap() {
   app.use(helmet());
   app.enableCors({ origin: config.get<string>('FRONTEND_URL'), credentials: true });
 
-  // مهم جدًا: مسار webhook الدفع يحتاج الـ body كـ Buffer خام لأجل التحقق من توقيع HMAC،
+  // مهم جدًا: مسار webhook الدفع يحتاج الـ body كـ Buffer خام لأجل إعادة حساب/مطابقة
+  // التوقيع أو السر بدقة (أي تحويل مسبق للـ body قد يغيّر البايتات ويكسر التحقق)،
   // لذلك نستثنيه من express.json() العام ونطبّق عليه express.raw() فقط.
   app.use('/payments/webhook', express.raw({ type: '*/*' }));
   app.use(express.json());

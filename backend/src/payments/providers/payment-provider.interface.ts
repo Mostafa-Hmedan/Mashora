@@ -29,11 +29,15 @@ export interface PaymentProviderAdapter {
   createCheckout(params: CreateCheckoutParams): Promise<CreateCheckoutResult>;
 
   /**
-   * يتحقق من توقيع الـ webhook الوارد (HMAC أو ما يعادله حسب البوابة).
-   * يجب أن يرمي استثناء أو يرجع نتيجة غير صالحة عند فشل التحقق —
-   * لا يُسمح أبدًا بمعاملة payload غير موقّع كدفع ناجح.
+   * يتحقق من صحة الـ webhook الوارد (HMAC في هيدر، أو secret token في الـ query، حسب البوابة).
+   * يجب أن يرمي استثناء عند فشل التحقق — لا يُسمح أبدًا بمعاملة payload غير موثَّق كدفع ناجح.
+   * @param query معطيات الرابط (query string) — بعض البوابات (Moyasar) تضع سر التحقق هنا
    */
-  verifyWebhook(rawBody: Buffer, headers: Record<string, string>): VerifiedWebhookEvent;
+  verifyWebhook(
+    rawBody: Buffer,
+    headers: Record<string, string>,
+    query: Record<string, string>,
+  ): VerifiedWebhookEvent;
 
   /** يسترد مبلغ دفعة مؤكَّدة (كليًا أو جزئيًا) لدى البوابة، ضمن سياسة الإلغاء */
   refund(providerRefId: string, amountCents: number): Promise<RefundResult>;
