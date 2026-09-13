@@ -70,11 +70,15 @@
    | `notifications` | تسجيل أجهزة FCM، إرسال إشعارات Push (best-effort، لا يكسر أي تدفق أساسي) |
    | `admin` | إدارة الأطباء/المستخدمين/الحجوزات |
 
-   ## تبديل بوابة الدفع
+   ## بوابة الدفع
+
+   البوابة النشطة افتراضيًا هي **PayTabs** (`PAYMENT_PROVIDER=PAYTABS`) — لا تشترط رقم
+   جوال سعودي للتسجيل، متاحة لعدة دول عربية. **Moyasar** مطبَّقة أيضًا وجاهزة كبديل
+   (تشترط رقم جوال سعودي عند فتح الحساب).
 
    `src/payments/providers/payment-provider.interface.ts` يعرّف واجهة موحّدة
-   (`createCheckout` + `verifyWebhook` + `refund`). أضف مزوّدًا جديدًا (مثل
-   `PayTabsProvider`) يطبّق نفس الواجهة، وسجّله في `payments.module.ts` ضمن الـ factory
+   (`createCheckout` + `verifyWebhook` + `refund`). لإضافة بوابة أخرى (HyperPay، Tap):
+   أنشئ ملفًا جديدًا يطبّق نفس الواجهة، وسجّله في `payments.module.ts` ضمن الـ factory
    حسب متغيّر البيئة `PAYMENT_PROVIDER` — بدون أي تعديل على `BookingsService` أو
    `PaymentsService`.
 
@@ -93,7 +97,7 @@
 
    ### متغيرات بيئة تحتاج قيمًا حقيقية قبل الإنتاج
 
-   - `PAYMENT_API_KEY`, `PAYMENT_WEBHOOK_SECRET` — من لوحة تحكم Moyasar (أو البوابة المختارة)
+   - `PAYTABS_PROFILE_ID`, `PAYTABS_SERVER_KEY` — من PayTabs Dashboard → Developers → Key Management
    - `DAILY_API_KEY` — من [daily.co](https://daily.co)
    - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — من Firebase
    Service Account JSON. بدونها، الإشعارات تُسجَّل فقط في اللوق (simulated) ولا يفشل أي شيء.
