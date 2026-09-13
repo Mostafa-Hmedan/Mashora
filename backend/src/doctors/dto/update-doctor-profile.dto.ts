@@ -13,4 +13,9 @@ export class UpdateDoctorProfileDto {
   @IsInt()
   @Min(0)
   consultFeeCents?: number;
+
+  /** رقم الحساب على تطبيق شام كاش لاستلام تحويلات المرضى يدويًا */
+  @IsOptional()
+  @IsString()
+  shamCashAccountNumber?: string;
 }

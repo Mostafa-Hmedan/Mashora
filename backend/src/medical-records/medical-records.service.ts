@@ -1,11 +1,10 @@
-import {
-  BadRequestException,
+import { Inject, BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+  NotFoundException, } from '@nestjs/common';
+import type { PrismaService } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
 import { BookingStatus, NotificationType } from '@prisma/client';
 import { CreateMedicalRecordDto } from './dto/create-medical-record.dto';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -14,7 +13,7 @@ import { PdfGeneratorService } from './pdf-generator.service';
 @Injectable()
 export class MedicalRecordsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly pdfGenerator: PdfGeneratorService,
   ) {}
@@ -92,7 +91,9 @@ export class MedicalRecordsService {
   async listMine(userId: string) {
     return this.prisma.medicalRecord.findMany({
       where: { booking: { userId } },
-      include: { booking: { include: { doctor: { include: { user: true } } } } },
+      include: {
+        booking: { include: { doctor: { include: { user: { select: { id: true, fullName: true } } } } } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

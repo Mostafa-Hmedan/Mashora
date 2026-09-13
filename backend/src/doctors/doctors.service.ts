@@ -1,11 +1,16 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Inject, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { PrismaService } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
 import { DoctorStatus } from '@prisma/client';
 import { UpdateDoctorProfileDto } from './dto/update-doctor-profile.dto';
+import { ImageUploadService } from '../common/services/image-upload.service';
 
 @Injectable()
 export class DoctorsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
+    private readonly imageUpload: ImageUploadService,
+  ) {}
 
   /** قائمة عامة بالأطباء المعتمدين فقط — هذا ما يراه المستخدم عند البحث عن طبيب */
   async listApproved(specialty?: string) {
@@ -51,5 +56,15 @@ export class DoctorsService {
       throw new ForbiddenException('حسابك كطبيب بانتظار موافقة الإدارة أو تم رفضه/إيقافه');
     }
     return profile;
+  }
+
+  /** يرفع/يستبدل صورة QR الخاصة بحساب الطبيب على شام كاش، تظهر لكل مرضاه عند اختيار الدفع اليدوي */
+  async uploadShamCashQr(userId: string, file: Express.Multer.File) {
+    const profile = await this.getOwnProfile(userId);
+    const relativePath = await this.imageUpload.saveImage(file, 'shamcash-qr');
+    return this.prisma.doctorProfile.update({
+      where: { id: profile.id },
+      data: { shamCashQrImagePath: relativePath },
+    });
   }
 }

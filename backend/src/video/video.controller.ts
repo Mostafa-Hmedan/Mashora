@@ -1,6 +1,7 @@
-import { Controller, ForbiddenException, Get, NotFoundException, Param, Post } from '@nestjs/common';
+import { Inject, Controller, ForbiddenException, Get, NotFoundException, Param, Post } from '@nestjs/common';
 import { VideoService } from './video.service';
-import { PrismaService } from '../prisma/prisma.service';
+import type { PrismaService } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { BookingStatus } from '@prisma/client';
@@ -9,7 +10,7 @@ import { BookingStatus } from '@prisma/client';
 export class VideoController {
   constructor(
     private readonly videoService: VideoService,
-    private readonly prisma: PrismaService,
+    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
   ) {}
 
   /** يتحقق من أن المستخدم الحالي طرف فعلي في الحجز (مريض أو الطبيب صاحب الحجز)، ويرجع الحجز */

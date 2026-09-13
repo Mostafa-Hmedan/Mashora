@@ -9,6 +9,7 @@ import { DoctorsModule } from './doctors/doctors.module';
 import { AvailabilityModule } from './availability/availability.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ManualPaymentsModule } from './manual-payments/manual-payments.module';
 import { VideoModule } from './video/video.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MedicalRecordsModule } from './medical-records/medical-records.module';
@@ -28,6 +29,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AvailabilityModule,
     BookingsModule,
     PaymentsModule,
+    ManualPaymentsModule,
     VideoModule,
     NotificationsModule,
     MedicalRecordsModule,

@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
+import type { PrismaService } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
 import { NotificationType, DevicePlatform } from '@prisma/client';
 import { cert, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
@@ -11,7 +12,7 @@ export class NotificationsService {
   private app: App | null = null;
 
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
 

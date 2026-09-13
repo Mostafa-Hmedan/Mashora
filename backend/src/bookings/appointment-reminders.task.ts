@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { PrismaService } from '../prisma/prisma.service';
+import type { PrismaService } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BookingStatus, NotificationType } from '@prisma/client';
 
@@ -16,7 +17,7 @@ export class AppointmentRemindersTask {
   private readonly logger = new Logger(AppointmentRemindersTask.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
   ) {}
 

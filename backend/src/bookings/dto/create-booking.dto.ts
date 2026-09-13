@@ -1,4 +1,5 @@
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { PaymentMethod } from '@prisma/client';
 
 export class CreateBookingDto {
   @IsUUID()
@@ -7,4 +8,9 @@ export class CreateBookingDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /** GATEWAY (افتراضي): بوابة إلكترونية. MANUAL_SHAMCASH: تحويل يدوي يراجعه الأدمن */
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
 }

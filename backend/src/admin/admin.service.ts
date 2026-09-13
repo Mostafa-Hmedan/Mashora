@@ -1,22 +1,25 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Inject, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { PrismaService } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
 import { DoctorStatus } from '@prisma/client';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PRISMA_SERVICE) private readonly prisma: PrismaService) {}
+
+  private readonly userSummarySelect = { id: true, fullName: true, email: true, phone: true, isActive: true };
 
   async listPendingDoctors() {
     return this.prisma.doctorProfile.findMany({
       where: { status: DoctorStatus.PENDING },
-      include: { user: true },
+      include: { user: { select: this.userSummarySelect } },
       orderBy: { createdAt: 'asc' },
     });
   }
 
   async listAllDoctors() {
     return this.prisma.doctorProfile.findMany({
-      include: { user: true },
+      include: { user: { select: this.userSummarySelect } },
       orderBy: { createdAt: 'desc' },
     });
   }

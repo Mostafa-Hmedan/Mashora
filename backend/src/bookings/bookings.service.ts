@@ -1,13 +1,12 @@
-import {
-  BadRequestException,
+import { Inject, BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+  NotFoundException, } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
-import { BookingStatus, NotificationType, SlotStatus } from '@prisma/client';
+import type { PrismaService } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
+import { BookingStatus, NotificationType, PaymentMethod, SlotStatus } from '@prisma/client';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { PaymentsService } from '../payments/payments.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -18,7 +17,7 @@ const CANCELLATION_WINDOW_HOURS = 24;
 @Injectable()
 export class BookingsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly paymentsService: PaymentsService,
     private readonly notifications: NotificationsService,
@@ -42,6 +41,13 @@ export class BookingsService {
       if (slot.startsAt < new Date()) {
         throw new BadRequestException('لا يمكن حجز فترة في الماضي');
       }
+      if (
+        dto.paymentMethod === PaymentMethod.MANUAL_SHAMCASH &&
+        !slot.doctor.shamCashAccountNumber &&
+        !slot.doctor.shamCashQrImagePath
+      ) {
+        throw new BadRequestException('هذا الطبيب لم يفعّل استلام الدفع اليدوي عبر شام كاش بعد');
+      }
 
       const updateResult = await tx.availabilitySlot.updateMany({
         where: { id: dto.slotId, status: SlotStatus.OPEN },
@@ -63,9 +69,25 @@ export class BookingsService {
           currency: slot.doctor.currency,
           notes: dto.notes,
           status: BookingStatus.PENDING_PAYMENT,
+          paymentMethod: dto.paymentMethod ?? PaymentMethod.GATEWAY,
         },
+        include: { doctor: true },
       });
     });
+
+    // الدفع اليدوي (شام كاش): لا بوابة إلكترونية هنا — نرجع للمريض بيانات استلام الطبيب
+    // ليحوّل يدويًا، ثم يرفع إثبات التحويل عبر manual-payments لاحقًا.
+    if (booking.paymentMethod === PaymentMethod.MANUAL_SHAMCASH) {
+      return {
+        booking,
+        manualPayment: {
+          shamCashAccountNumber: booking.doctor.shamCashAccountNumber,
+          shamCashQrImageUrl: booking.doctor.shamCashQrImagePath
+            ? `/doctors/${booking.doctorId}/shamcash-qr`
+            : null,
+        },
+      };
+    }
 
     const checkout = await this.paymentsService.createCheckoutForBooking(booking.id);
     return { booking, ...checkout };
@@ -74,7 +96,12 @@ export class BookingsService {
   async listMine(userId: string) {
     return this.prisma.booking.findMany({
       where: { userId },
-      include: { doctor: { include: { user: true } }, slot: true, videoRoom: true, payment: true },
+      include: {
+        doctor: { include: { user: { select: { id: true, fullName: true } } } },
+        slot: true,
+        videoRoom: true,
+        payment: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -96,7 +123,12 @@ export class BookingsService {
   async getOneForUser(userId: string, bookingId: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { doctor: { include: { user: true } }, slot: true, videoRoom: true, payment: true },
+      include: {
+        doctor: { include: { user: { select: { id: true, fullName: true } } } },
+        slot: true,
+        videoRoom: true,
+        payment: true,
+      },
     });
     if (!booking) throw new NotFoundException('الحجز غير موجود');
     if (booking.userId !== userId) throw new ForbiddenException('لا يمكنك الوصول إلى هذا الحجز');

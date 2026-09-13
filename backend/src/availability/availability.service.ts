@@ -1,5 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Inject, BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { PrismaService } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
 import { DoctorsService } from '../doctors/doctors.service';
 import { SlotStatus } from '@prisma/client';
 import { CreateSlotDto } from './dto/create-slot.dto';
@@ -7,7 +8,7 @@ import { CreateSlotDto } from './dto/create-slot.dto';
 @Injectable()
 export class AvailabilityService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
     private readonly doctorsService: DoctorsService,
   ) {}
 

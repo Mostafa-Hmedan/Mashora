@@ -1,14 +1,14 @@
-import {
-  BadRequestException,
+import { Inject, BadRequestException,
   ConflictException,
   Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+  UnauthorizedException, } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { PrismaService } from '../prisma/prisma.service';
+import type { PrismaService } from '../prisma/prisma.service';
+import { findUserWithPasswordHash } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
 import { Role } from '../common/enums/role.enum';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -18,7 +18,7 @@ const BCRYPT_ROUNDS = 12;
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
@@ -69,22 +69,26 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-      include: { doctorProfile: true },
-    });
-    if (!user || !user.isActive) {
+    // استعلام خام مخصص: امتداد الحماية في PrismaService يحذف passwordHash تلقائيًا
+    // من أي استعلام عادي عبر query builder، ونحتاجه هنا فعليًا لمقارنة كلمة المرور.
+    const userWithPassword = await findUserWithPasswordHash(this.prisma, dto.email);
+    if (!userWithPassword || !userWithPassword.isActive) {
       throw new UnauthorizedException('بيانات الدخول غير صحيحة');
     }
 
-    const passwordMatches = await bcrypt.compare(dto.password, user.passwordHash);
+    const passwordMatches = await bcrypt.compare(dto.password, userWithPassword.passwordHash);
     if (!passwordMatches) {
       throw new UnauthorizedException('بيانات الدخول غير صحيحة');
     }
 
-    const tokens = await this.issueTokens(user.id, user.email, user.role);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userWithPassword.id },
+      include: { doctorProfile: true },
+    });
+
+    const tokens = await this.issueTokens(user!.id, user!.email, user!.role);
     return {
-      user: this.sanitizeUser(user),
+      user: this.sanitizeUser(user!),
       ...tokens,
     };
   }

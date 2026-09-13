@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
+import type { PrismaService } from '../prisma/prisma.service';
+import { PRISMA_SERVICE } from '../prisma/prisma.constants';
 import { BookingStatus, PaymentStatus, SlotStatus } from '@prisma/client';
 import { PAYMENT_PROVIDER_ADAPTER } from './payments.constants';
 import type { PaymentProviderAdapter } from './providers/payment-provider.interface';
@@ -13,7 +14,7 @@ export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     @Inject(PAYMENT_PROVIDER_ADAPTER) private readonly provider: PaymentProviderAdapter,
     private readonly videoService: VideoService,
@@ -111,20 +112,35 @@ export class PaymentsService {
       return { handled: true, paid: true, alreadyProcessed: true };
     }
 
-    const booking = await this.prisma.$transaction(async (tx) => {
-      const updatedPayment = await tx.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: PaymentStatus.PAID,
-          paidAt: new Date(),
-          rawWebhookPayload: rawPayload as any,
-        },
-      });
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: PaymentStatus.PAID,
+        paidAt: new Date(),
+        rawWebhookPayload: rawPayload as any,
+      },
+    });
 
+    await this.confirmBookingAndNotify(payment.bookingId);
+    return { handled: true, paid: true };
+  }
+
+  /**
+   * نقطة تجميع مشتركة تُستدعى بعد ثبوت الدفع (بأي وسيلة: webhook إلكتروني، أو موافقة أدمن
+   * على إثبات تحويل يدوي عبر ManualPaymentsService). تحوّل الحجز CONFIRMED، تحجز الـ slot
+   * نهائيًا BOOKED، تنشئ غرفة الفيديو، وترسل إشعارات الطرفين.
+   */
+  async confirmBookingAndNotify(bookingId: string) {
+    const booking = await this.prisma.$transaction(async (tx) => {
       const updatedBooking = await tx.booking.update({
-        where: { id: updatedPayment.bookingId },
+        where: { id: bookingId },
         data: { status: BookingStatus.CONFIRMED, confirmedAt: new Date() },
-        include: { doctor: { include: { user: true } }, user: true },
+        include: {
+          // select صريح (لا include: true) لاستثناء passwordHash من الاستجابة —
+          // هذا الكائن يُرجَع مباشرة كـ response من مسارات مثل admin/manual-payments/approve
+          doctor: { include: { user: { select: { id: true, fullName: true, email: true } } } },
+          user: { select: { id: true, fullName: true, email: true } },
+        },
       });
 
       await tx.availabilitySlot.update({
@@ -154,7 +170,7 @@ export class PaymentsService {
       data: { bookingId: booking.id },
     });
 
-    return { handled: true, paid: true };
+    return booking;
   }
 
   private safeParse(rawBody: Buffer) {

@@ -31,12 +31,24 @@ enum SlotStatus {
 }
 
 enum BookingStatus {
-  PENDING_PAYMENT // أُنشئ الحجز وننتظر تأكيد الدفع من الـ webhook
-  CONFIRMED       // الدفع تأكد + تولّدت غرفة الفيديو
-  IN_SESSION      // الطرفان دخلا غرفة الفيديو والجلسة قائمة فعليًا
-  COMPLETED       // انتهت الجلسة (يدويًا أو تلقائيًا بعد مدة الحجز)
-  CANCELLED       // ألغي (يدويًا أو بسبب انتهاء مهلة الدفع)
-  EXPIRED         // انتهت مهلة الحجز المؤقت قبل إتمام الدفع
+  PENDING_PAYMENT      // أُنشئ الحجز وننتظر الدفع (إلكتروني عبر webhook، أو رفع إثبات تحويل يدوي)
+  PENDING_VERIFICATION // (دفع يدوي فقط) المريض رفع إثبات التحويل، بانتظار مراجعة الأدمن
+  CONFIRMED            // الدفع تأكد + تولّدت غرفة الفيديو
+  IN_SESSION           // الطرفان دخلا غرفة الفيديو والجلسة قائمة فعليًا
+  COMPLETED            // انتهت الجلسة (يدويًا أو تلقائيًا بعد مدة الحجز)
+  CANCELLED            // ألغي (يدويًا أو بسبب انتهاء مهلة الدفع)
+  EXPIRED              // انتهت مهلة الحجز المؤقت قبل إتمام الدفع
+}
+
+enum PaymentMethod {
+  GATEWAY          // بوابة إلكترونية (PayTabs/Moyasar/.. عبر webhook موقّع)
+  MANUAL_SHAMCASH  // تحويل يدوي عبر شام كاش + مراجعة أدمن
+}
+
+enum ManualProofStatus {
+  PENDING   // بانتظار مراجعة الأدمن
+  APPROVED
+  REJECTED
 }
 
 enum PaymentStatus {
@@ -134,6 +146,9 @@ model DoctorProfile {
   approvedById  String?
   ratingAvg     Float        @default(0)   // متوسط التقييم، محدَّث تلقائيًا عند كل مراجعة جديدة
   ratingCount   Int          @default(0)
+  // بيانات استلام التحويل اليدوي (شام كاش) — اختيارية، يديرها الطبيب من ملفه الشخصي
+  shamCashQrImagePath   String?
+  shamCashAccountNumber String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
@@ -169,6 +184,7 @@ model Booking {
   doctorId      String
   slotId        String        @unique
   status        BookingStatus @default(PENDING_PAYMENT)
+  paymentMethod PaymentMethod @default(GATEWAY)
   amountCents   Int
   currency      String        @default("SAR")
   notes         String?
@@ -184,6 +200,7 @@ model Booking {
   doctor   DoctorProfile @relation("DoctorBookings", fields: [doctorId], references: [id])
   slot     AvailabilitySlot @relation(fields: [slotId], references: [id])
   payment  Payment?
+  manualPaymentProof ManualPaymentProof?
   videoRoom     VideoRoom?
   medicalRecord MedicalRecord?
   review        Review?
@@ -191,6 +208,23 @@ model Booking {
   @@index([userId])
   @@index([doctorId])
   @@map("bookings")
+}
+
+// إثبات تحويل يدوي (شام كاش) يرفعه المريض، يراجعه الأدمن ويقبل/يرفض — لا مسار آخر يؤكده
+model ManualPaymentProof {
+  id               String            @id @default(uuid())
+  bookingId        String            @unique
+  proofImagePath   String            // صورة سكرين شوت إثبات التحويل من تطبيق شام كاش
+  status           ManualProofStatus @default(PENDING)
+  reviewedByAdminId String?
+  rejectionReason  String?
+  createdAt        DateTime          @default(now())
+  reviewedAt       DateTime?
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("manual_payment_proofs")
 }
 
 // عملية الدفع المرتبطة بحجز — الأدمن/الفرونت لا يمكنهما تأكيدها، فقط webhook موقّع من البوابة
